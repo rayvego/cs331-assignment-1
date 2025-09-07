@@ -86,9 +86,9 @@ dns_report = []
 
 if __name__ == "__main__":
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(('127.0.0.1', 12345))
+    sock.bind(('127.0.0.1', 8081))
 
-    print("DNS Resolution Server started on port 12345")
+    print("DNS Resolution Server started on port 8081")
     print("IP Pool:", IP_POOL)
     print("Time-based routing rules loaded")
     print("-" * 60)
