@@ -77,10 +77,10 @@ class DnsServer:
                 self.sock.setsockopt(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
             else:
                 self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-            # THE FIX: allow the socket to be reused immediately after it's closed
-            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             
+            # essential for preventing "address already in use" errors on quick restarts
+            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
             self.sock.bind((self.host, self.port))
             logging.info(f"server listening on {self.host}:{self.port}")
         except Exception as e:
@@ -92,40 +92,32 @@ class DnsServer:
                 if config.USE_RAW_SOCKETS:
                     # for raw sockets, parse ip and udp headers manually
                     raw_packet, _ = self.sock.recvfrom(config.SERVER_BUFFER_SIZE)
-                    if len(raw_packet) < 28: continue # ensure packet has full ip and udp headers
-                    
+                    if len(raw_packet) < 28: continue
                     udph = struct.unpack('!HHHH', raw_packet[20:28])
-                    if udph[1] != self.port: continue # filter packets not destined for our port
+                    if udph[1] != self.port: continue # filter packets not for us
                     
-                    iph = struct.unpack('!BBHHHBBH4s4s', raw_packet[:20])
                     ip_header_len = (raw_packet[0] & 0xF) * 4
-                    client_addr = (socket.inet_ntoa(iph[8]), udph[0]) # get source ip and port
-                    app_data = raw_packet[ip_header_len + 8:]
+                    iph = struct.unpack('!BBHHHBBH4s4s', raw_packet[:20])
+                    client_addr = (socket.inet_ntoa(iph[8]), udph[0])
+                    app_data = raw_packet[ip_header_len+8:]
                 else:
-                    # for standard sockets, recvfrom gives us the data and address directly
                     app_data, client_addr = self.sock.recvfrom(config.SERVER_BUFFER_SIZE)
 
-                # extract custom header and dns data from the payload
                 custom_header = app_data[:8]
                 dns_data = app_data[8:]
-                
                 resolved_ip, header_str = self._resolve_ip(custom_header)
                 domain_name = self._parse_domain_name(dns_data)
                 self.dns_report.append({"custom_header": header_str, "domain": domain_name, "resolved_ip": resolved_ip})
                 
-                # construct the response payload
                 response_data = custom_header + resolved_ip.encode()
 
                 if config.USE_RAW_SOCKETS:
-                    # create full ip/udp packet for the response
                     ip_header = create_ipv4_header(self.host, client_addr[0], socket.IPPROTO_UDP, len(response_data))
                     udp_header = create_udp_header(self.port, client_addr[1], response_data)
                     response_packet = ip_header + udp_header + response_data
                     self.sock.sendto(response_packet, client_addr)
                 else:
-                    # send only the application data
                     self.sock.sendto(response_data, client_addr)
-                    
         except KeyboardInterrupt:
             logging.info("shutdown signal received.")
         finally:
