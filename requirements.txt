@@ -1,0 +1,8 @@
+# path: requirements.txt
+
+# packet manipulation and analysis
+scapy
+# progress bars for cli
+tqdm
+# plotting for analysis report
+matplotlib
